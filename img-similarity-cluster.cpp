@@ -17,9 +17,14 @@
  */
 
 /* compile with:
- * g++ img-similarity-cluster.cpp -o img-similarity-cluster -std=c++17 -Wall -pthread `pkg-config --cflags --libs opencv4` -O3
+ * 
+ * g++ img-similarity-cluster.cpp -o img-similarity-cluster -std=c++17 \
+ * -Wall -pthread `pkg-config --cflags --libs opencv4` -O3
+ * 
  * or:
- * clang++ img-similarity-cluster.cpp -o img-similarity-cluster -std=c++17 -Wall -pthread `pkg-config --cflags --libs opencv4` -O3
+ * 
+ * clang++ img-similarity-cluster.cpp -o img-similarity-cluster \
+ * -std=c++17 -Wall -pthread `pkg-config --cflags --libs opencv4` -O3
  */
 
 #include <iostream>
@@ -42,19 +47,34 @@
 #include "opencv2/img_hash.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
 
-// help message
+/**
+ * Prints the help message
+ */
 #define print_help() \
 	printf("img-similarity-cluster usage:\n"); \
 	printf("-h\tshow this message\n"); \
-	printf("-d=arg\tdirectory of images\n"); \
+	printf("-d=arg\tdirectory of images (- for stdin)\n"); \
 	printf("-r\tload images recursively\n"); \
 	printf("-t=arg\tthreshold for similarity\n"); \
 	printf("-u\tshow unique images\n");
 
-// thread function for calculating perceptual hashes
+
+// Mutex for the calculate_hash_values function
 std::mutex mu;
-void calculate_hash_values( const std::deque<std::string>& file_list, std::map<unsigned long, cv::Mat>& hash_list,
-	cv::Ptr<cv::img_hash::ImgHashBase> hash_func, unsigned int thread_id, unsigned int num_threads ){
+
+/**
+ * Calculate the perceptual hash of the images
+ * 
+ * @param file_list List of filenames for all images
+ * @param hash_list Stores the hash values
+ * @param hash_func Hash function
+ * @param thread_id Number of the particular thread
+ * @param num_threads Total number of threads
+ */
+void calculate_hash_values( const std::deque<std::string>& file_list, 
+	std::map<unsigned long, cv::Mat>& hash_list, 
+	cv::Ptr<cv::img_hash::ImgHashBase> hash_func, 
+	unsigned int thread_id, unsigned int num_threads ){
 	
 	// iterate over file_list
 	for( unsigned long i = 0; i < file_list.size(); ++i ){
@@ -76,16 +96,23 @@ void calculate_hash_values( const std::deque<std::string>& file_list, std::map<u
 		
 		// store result
 		mu.lock();
-		hash_list.insert( std::pair<unsigned long, cv::Mat>( i, current_hash ) );
+		
+		hash_list.insert( std::pair<unsigned long, cv::Mat>( i, 
+		current_hash ) );
+		
 		mu.unlock();
 		
 	}
 	
 }
 
-// recursion function for building the temporary image cluster (depth-first search)
+/**
+ * Recursion function for building the temporary image cluster
+ * (depth-first search)
+ */
 void build_temp_cluster( std::set< unsigned long >& temp_cluster,
-	std::map< unsigned long, std::set< unsigned long > >& image_similarities, unsigned long start ){
+	std::map< unsigned long, std::set< unsigned long > >
+	& image_similarities, unsigned long start ){
 	
 	for( auto& i : image_similarities.at(start) ){
 		
@@ -100,13 +127,19 @@ void build_temp_cluster( std::set< unsigned long >& temp_cluster,
 	
 }
 
-// main function
+/**
+ * Main function
+ */
 int main( int argc, char* argv[] ){
 	
 	using namespace std;
 	namespace fs = filesystem;
 	
+	
+	
 	// check arguments
+	//******************************************************************
+	
 	int c;
 	bool be_recursive = false, show_unique = false;
 	bool flag_directory = false, flag_threshold = false;
@@ -138,12 +171,16 @@ int main( int argc, char* argv[] ){
 		
 	}
 	
+	// check if the directory is specified on the commandline
 	if( !flag_directory ){
 		cout << "Error: missing argument -d\n";
 		return 0;
 	}
 	
+	// this is the threshold, under which images are considered similar
 	double threshold = 2.0;
+	
+	// check if the threshold is explicitly specified on the commandline
 	if( flag_threshold ){
 		try{
 			threshold = stod( string_threshold );
@@ -152,30 +189,56 @@ int main( int argc, char* argv[] ){
 		}
 	}
 	
-	// get list of filenames 
-	// to save memory, each file is identified by an unsigned long instead of a string
+	
+	
+	// get list of filenames
+	//******************************************************************
+	
+	// Stores the filenames
+	// To save memory, each file is identified by an unsigned long
+	// instead of a string.
 	deque<string> file_list;
     fs::path directory_path = string_directory;
     
-    // check if path is directory
-    if( !( fs::exists( directory_path ) && fs::is_directory( directory_path ) ) ){
-		cout << "Error: Couldn't open " << directory_path << endl;
-		return 0;
-	}
-    
-    // load filenames
-    if( be_recursive ){
-		// recurse directory and add filenames to deque
-		for( auto p: fs::recursive_directory_iterator( directory_path ) ){
-			if( fs::is_regular_file(p.path()) ) {
-				file_list.push_back( p.path().string() );
-			}
+    if( directory_path == "-" ){ // load filenames from stdin
+		
+		string filename;
+		while( getline( cin, filename ) ){
+			file_list.push_back( filename );
 		}
-	} else{
-		for( auto p: fs::directory_iterator( directory_path ) ){
-			if( fs::is_regular_file(p.path()) ) {
-				file_list.push_back( p.path().string() );
+		
+	} else{ // load from directory
+		// check if path is directory
+		if( !( fs::exists( directory_path ) &&
+			fs::is_directory( directory_path ) ) ){
+			
+			cout << "Error: Couldn't open " << directory_path << endl;
+			return 0;
+		}
+		
+		// load filenames
+		if( be_recursive ){
+			
+			// recurse directory and add filenames to deque
+			for( auto p:
+				fs::recursive_directory_iterator( directory_path ) ){
+				
+				if( fs::is_regular_file(p.path()) ) {
+					file_list.push_back( p.path().string() );
+				}
+				
 			}
+			
+		} else{
+			
+			for( auto p: fs::directory_iterator( directory_path ) ){
+				
+				if( fs::is_regular_file(p.path()) ) {
+					file_list.push_back( p.path().string() );
+				}
+				
+			}
+			
 		}
 	}
 	
@@ -184,14 +247,20 @@ int main( int argc, char* argv[] ){
 	
 	
 	// calculate perceptual hash for each file and store them in map
-	// file -> hash
+	//******************************************************************
+	
+	// Stores the perceptual hash for all images.
 	map<unsigned long, cv::Mat> img_hash_values;
 	
 	// create threads
-    unsigned int num_threads = (thread::hardware_concurrency()!=0) ? thread::hardware_concurrency() : 1 ;
+    unsigned int num_threads = (thread::hardware_concurrency()!=0) ?
+		thread::hardware_concurrency() : 1 ;
+		
     thread t[num_threads];
     for( unsigned int i = 0; i < num_threads; ++i ){
-		t[i] = thread( calculate_hash_values, ref(file_list), ref(img_hash_values), cv::img_hash::PHash::create(), i, num_threads );
+		t[i] = thread( calculate_hash_values, ref(file_list), 
+		ref(img_hash_values), cv::img_hash::PHash::create(), 
+		i, num_threads );
 	}
     
     // join threads
@@ -204,26 +273,38 @@ int main( int argc, char* argv[] ){
 	
 	
 	// create a map of all unique file pairs to their hash difference
-	map< pair< unsigned long, unsigned long >, double > image_deltas;
-	// hash function used for comparison of two hashes
-	cv::Ptr<cv::img_hash::ImgHashBase> hash_func = cv::img_hash::PHash::create();
+	//******************************************************************
 	
-	for( auto it1 = img_hash_values.begin(); it1 != img_hash_values.end(); it1++ ){
+	map< pair< unsigned long, unsigned long >, double > image_deltas;
+	
+	// hash function used for comparison of two hashes
+	cv::Ptr<cv::img_hash::ImgHashBase> hash_func = 
+		cv::img_hash::PHash::create();
+	
+	for( auto it1 = img_hash_values.begin(); it1 != 
+		img_hash_values.end(); it1++ ){
 		
 		auto it2 = it1;
 		it2++;
+		
 		for( ; it2 != img_hash_values.end(); it2++ ){
-			image_deltas[std::pair< unsigned long, unsigned long >( it1->first, it2->first )] =
-				hash_func->compare( img_hash_values[it1->first], img_hash_values[it2->first] );
+			image_deltas[std::pair< unsigned long, unsigned long >
+				( it1->first, it2->first )] =
+				hash_func->compare( img_hash_values[it1->first], 
+				img_hash_values[it2->first] );
 		}
 		
 	}
 	
-	cout << "Hash distances calculated, " << image_deltas.size() << " image pairs.\n";
+	cout << "Hash distances calculated, " 
+		<< image_deltas.size() << " image pairs.\n";
 	
 	
 	
-	// create map of images to their similar images (adjacent vertices in the graph)
+	// create map of images to their similar images
+	// (adjacent vertices in the graph)
+	//******************************************************************
+	
 	map< unsigned long, set< unsigned long > > image_similarities;
 	
 	// fill map with images
@@ -245,6 +326,8 @@ int main( int argc, char* argv[] ){
 	
 	
 	// get image clusters (graph components) and unique images
+	//******************************************************************
+	
 	vector< set< unsigned long > > image_clusters;
 	set<unsigned long> unique_images;
 	
@@ -257,25 +340,31 @@ int main( int argc, char* argv[] ){
 		
 		// recursively create set of connected images 
 		set< unsigned long > temp_cluster;
+		
 		temp_cluster.emplace( i.first );
 		build_temp_cluster( temp_cluster, image_similarities, i.first );
+		
 		bool merged = false;
 		
 		// unify temp_cluster with existing clusters
 		for( auto& j : image_clusters ){
 			
-			// if common elements merge temp_cluster with image cluster
-			if( find_first_of( j.begin(), j.end(), temp_cluster.begin(), temp_cluster.end() ) != j.end() ){
+			// if common elements: merge temp_cluster with image cluster
+			if( find_first_of( j.begin(), j.end(), temp_cluster.begin(),
+			temp_cluster.end() ) != j.end() ){
+				
 				for( auto& k : temp_cluster ){
 					j.emplace( k );
 				}
 				merged = true;
 				break;
+				
 			}
 			
 		}
 		
-		// is temp_cluster merged with image_clusters, no:
+		// is temp_cluster merged with image_clusters, if not,
+		// add temp_cluster as new cluster to image_clusters
 		if( !merged ){
 			image_clusters.push_back( temp_cluster );
 		}
@@ -284,17 +373,21 @@ int main( int argc, char* argv[] ){
 	
 	// print image clusters
 	for( unsigned int i = 0; i < image_clusters.size(); i++ ){
+		
 		cout << "image cluster " << i << ":\n";
 		for( auto& j : image_clusters[i] ){
 			cout << file_list[j] << "\n";
 		}
+		
 	}
 	
 	// print unique images
 	if( show_unique ){
+		
 		cout << "unique images:\n";
 		for( auto& i : unique_images ){
 			cout << file_list[i] << "\n";
 		}
+		
 	}
 }
