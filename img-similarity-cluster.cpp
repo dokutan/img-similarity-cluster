@@ -51,7 +51,8 @@
  * Prints the help message
  */
 #define print_help() \
-	printf("img-similarity-cluster usage:\n"); \
+	printf("Finds groups of similar images.\n\n"); \
+	printf("img-similarity-cluster usage:\n\n"); \
 	printf("-h\tshow this message\n"); \
 	printf("-d=arg\tdirectory of images (- for stdin)\n"); \
 	printf("-r\tload images recursively\n"); \

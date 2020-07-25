@@ -3,11 +3,13 @@ Find duplicate or similar images
 
 # Installing and running
 - Install OpenCV
-- Compile with:
+- Compile and install with:
 ```
-g++ img-similarity-cluster.cpp -o img-similarity-cluster -std=c++17 -Wall -pthread `pkg-config --cflags --libs opencv4` -O3
+make -j
+sudo make install
 ```
 - Get usage information:
 ```
-./img-similarity-cluster -h
+img-similarity-cluster -h
+img-search -h
 ```
