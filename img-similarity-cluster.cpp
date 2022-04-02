@@ -257,16 +257,17 @@ int main( int argc, char* argv[] ){
     unsigned int num_threads = (thread::hardware_concurrency()!=0) ?
 		thread::hardware_concurrency() : 1 ;
 		
-    thread t[num_threads];
+    std::vector< thread > t;
+	t.resize(num_threads);
     for( unsigned int i = 0; i < num_threads; ++i ){
-		t[i] = thread( calculate_hash_values, ref(file_list), 
+		t.at(i) = thread( calculate_hash_values, ref(file_list), 
 		ref(img_hash_values), cv::img_hash::PHash::create(), 
 		i, num_threads );
 	}
     
     // join threads
     for( unsigned int i = 0; i < num_threads; ++i ){
-		t[i].join();
+		t.at(i).join();
 	}
 	
 	cout << "Finished hash calculation.\n";
