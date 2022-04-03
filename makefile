@@ -3,7 +3,7 @@ CC=g++
 build: img-similarity-cluster img-search
 
 img-similarity-cluster:
-	$(CC) img-similarity-cluster.cpp -o img-similarity-cluster -std=c++17 -Wall -pthread `pkg-config --cflags --libs opencv4` -O3
+	$(CC) img-similarity-cluster.cpp -o img-similarity-cluster -std=c++20 -Wall -pthread `pkg-config --cflags --libs opencv4` -O3
 
 img-search:
 	$(CC) img-search.cpp -o img-search -std=c++17 -Wall -pthread `pkg-config --cflags --libs opencv4` -O3

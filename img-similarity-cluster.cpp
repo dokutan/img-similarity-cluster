@@ -56,8 +56,7 @@
 	printf("-h\tshow this message\n"); \
 	printf("-d=arg\tdirectory of images (- for stdin)\n"); \
 	printf("-r\tload images recursively\n"); \
-	printf("-t=arg\tthreshold for similarity\n"); \
-	printf("-u\tshow unique images\n");
+	printf("-t=arg\tthreshold for similarity\n");
 
 
 // Mutex for the calculate_hash_values function
@@ -68,43 +67,83 @@ std::mutex mu;
  * 
  * @param file_list List of filenames for all images
  * @param hash_list Stores the hash values
- * @param hash_func Hash function
  * @param thread_id Number of the particular thread
  * @param num_threads Total number of threads
  */
 void calculate_hash_values( const std::deque<std::string>& file_list, 
-	std::map<unsigned long, cv::Mat>& hash_list, 
-	cv::Ptr<cv::img_hash::ImgHashBase> hash_func, 
+	std::vector< cv::Mat >& hash_list,
 	unsigned int thread_id, unsigned int num_threads ){
+
+	cv::Ptr<cv::img_hash::ImgHashBase> hash_func = cv::img_hash::PHash::create();
 	
 	// iterate over file_list
-	for( unsigned long i = 0; i < file_list.size(); ++i ){
+	for( unsigned long i = 0; i < file_list.size(); i++ ){
 		
 		// check if correct thread for image
 		if( i%num_threads != thread_id )
 			continue;
 		
+		cv::Mat current_image, current_hash;
+		
 		// read image
-		cv::Mat current_image = cv::imread( file_list.at(i) );
+		current_image = cv::imread( file_list.at(i) );
 		
 		// check for image data
-		if( !current_image.data )
+		if( !current_image.data ){
+			hash_list.at(i) = current_image;
+			continue;
+		}
+		
+		// calculate hash
+		hash_func->compute( current_image, current_hash );
+
+		// store hash
+		hash_list.at(i) = current_hash;
+	}
+}
+
+/**
+ * Calculate all similar pairs of images
+ * 
+ * @param hash_list List of all hash values
+ * @param similar_pairs Stores the similar pairs
+ * @param threshold Similarity threshold
+ * @param thread_id Number of the particular thread
+ * @param num_threads Total number of threads
+ */
+void calculate_similar_pairs(const std::vector< cv::Mat >& hash_list,
+	std::map< unsigned long, std::set< unsigned long > >& image_similarities,
+	double threshold,
+	unsigned int thread_id, unsigned int num_threads ){
+	
+	// hash function used for comparison of two hashes
+	cv::Ptr<cv::img_hash::ImgHashBase> hash_func = cv::img_hash::PHash::create();
+
+	// iterate over hash_list
+	for( unsigned long i = 0; i < hash_list.size(); i++ ){
+		
+		// check if correct thread for image
+		if( i%num_threads != thread_id )
 			continue;
 		
-		// calculate hash	
-		cv::Mat current_hash;
-		hash_func->compute( current_image, current_hash );
+		if( !hash_list.at(i).data )
+			continue;
 		
-		// store result
-		mu.lock();
-		
-		hash_list.insert( std::pair<unsigned long, cv::Mat>( i, 
-		current_hash ) );
-		
-		mu.unlock();
+		for( unsigned long j = i+1; j < hash_list.size(); ++j ){
+			if( !hash_list.at(j).data )
+				continue;
+
+			if(hash_func->compare( hash_list.at(i), hash_list.at(j) ) <= threshold ){
+				mu.lock();
+				if(!image_similarities.contains(i)){
+					image_similarities.emplace(i, std::set<unsigned long>());
+				}
+				image_similarities.at(i).emplace(j);
+				mu.unlock();
+			}
+		}
 		
 	}
-	
 }
 
 /**
@@ -115,15 +154,19 @@ void build_temp_cluster( std::set< unsigned long >& temp_cluster,
 	std::map< unsigned long, std::set< unsigned long > >
 	& image_similarities, unsigned long start ){
 	
+	if(!image_similarities.contains(start)){
+		return;
+	}
+
 	for( auto& i : image_similarities.at(start) ){
 		
 		// is element already in temp_cluster ?
-		if( temp_cluster.find(i) != temp_cluster.end() )
+		if( temp_cluster.contains(i) )
 			continue;
 		
 		// new element:
-			temp_cluster.emplace(i);
-			build_temp_cluster( temp_cluster, image_similarities, i );
+		temp_cluster.emplace(i);
+		build_temp_cluster( temp_cluster, image_similarities, i );
 	}
 	
 }
@@ -142,10 +185,10 @@ int main( int argc, char* argv[] ){
 	//******************************************************************
 	
 	int c;
-	bool be_recursive = false, show_unique = false;
+	bool be_recursive = false;
 	bool flag_directory = false, flag_threshold = false;
 	string string_threshold, string_directory;
-	while( ( c = getopt( argc, argv, "hrud:t:") ) != -1 ){
+	while( ( c = getopt( argc, argv, "hrd:t:") ) != -1 ){
 		
 		switch(c){
 			case 'h':
@@ -154,9 +197,6 @@ int main( int argc, char* argv[] ){
 				break;
 			case 'r':
 				be_recursive = true;
-				break;
-			case 'u':
-				show_unique = true;
 				break;
 			case 'd':
 				flag_directory = 1;
@@ -179,7 +219,7 @@ int main( int argc, char* argv[] ){
 	}
 	
 	// this is the threshold, under which images are considered similar
-	double threshold = 2.0;
+	double threshold = 0.2;
 	
 	// check if the threshold is explicitly specified on the commandline
 	if( flag_threshold ){
@@ -189,7 +229,14 @@ int main( int argc, char* argv[] ){
 			
 		}
 	}
-	
+
+	// create threads
+    //******************************************************************
+	unsigned int num_threads = (thread::hardware_concurrency()!=0) ?
+		thread::hardware_concurrency() : 1 ;
+		
+    std::vector< thread > t;
+	t.resize(num_threads);	
 	
 	
 	// get list of filenames
@@ -247,96 +294,50 @@ int main( int argc, char* argv[] ){
 	
 	
 	
-	// calculate perceptual hash for each file and store them in map
+	// calculate perceptual hash for each file
 	//******************************************************************
 	
-	// Stores the perceptual hash for all images.
-	map<unsigned long, cv::Mat> img_hash_values;
-	
-	// create threads
-    unsigned int num_threads = (thread::hardware_concurrency()!=0) ?
-		thread::hardware_concurrency() : 1 ;
-		
-    std::vector< thread > t;
-	t.resize(num_threads);
+	std::vector< cv::Mat > hash_list;
+
+	hash_list.resize( file_list.size() );
     for( unsigned int i = 0; i < num_threads; ++i ){
-		t.at(i) = thread( calculate_hash_values, ref(file_list), 
-		ref(img_hash_values), cv::img_hash::PHash::create(), 
-		i, num_threads );
+		t.at(i) = thread( calculate_hash_values, ref(file_list), ref(hash_list), i, num_threads );
 	}
-    
-    // join threads
     for( unsigned int i = 0; i < num_threads; ++i ){
 		t.at(i).join();
 	}
-	
-	cout << "Finished hash calculation.\n";
-	
-	
-	
-	// create a map of all unique file pairs to their hash difference
-	//******************************************************************
-	
-	map< pair< unsigned long, unsigned long >, double > image_deltas;
-	
-	// hash function used for comparison of two hashes
-	cv::Ptr<cv::img_hash::ImgHashBase> hash_func = 
-		cv::img_hash::PHash::create();
-	
-	for( auto it1 = img_hash_values.begin(); it1 != 
-		img_hash_values.end(); it1++ ){
-		
-		auto it2 = it1;
-		it2++;
-		
-		for( ; it2 != img_hash_values.end(); it2++ ){
-			image_deltas[std::pair< unsigned long, unsigned long >
-				( it1->first, it2->first )] =
-				hash_func->compare( img_hash_values[it1->first], 
-				img_hash_values[it2->first] );
-		}
-		
-	}
-	
-	cout << "Hash distances calculated, " 
-		<< image_deltas.size() << " image pairs.\n";
-	
+
+	cout << "Finished hash calculations.\n";
 	
 	
 	// create map of images to their similar images
-	// (adjacent vertices in the graph)
 	//******************************************************************
-	
+
 	map< unsigned long, set< unsigned long > > image_similarities;
-	
-	// fill map with images
-	for( auto& i : img_hash_values ){
-		image_similarities[i.first] = set< unsigned long >();
+
+	for( unsigned int i = 0; i < num_threads; ++i ){
+		t.at(i) = thread( calculate_similar_pairs, ref(hash_list), ref(image_similarities), threshold, i, num_threads );
 	}
-	
-	// check for similar image pairs
-	for( auto& i : image_deltas ){
-		// images are similar
-		if( i.second <= threshold ){
-			image_similarities[i.first.first].emplace(i.first.second);
-			image_similarities[i.first.second].emplace(i.first.first);
-		}
+    for( unsigned int i = 0; i < num_threads; ++i ){
+		t.at(i).join();
 	}
-	
+
+	// hashes are no longer needed
+	hash_list.clear();
+	hash_list.shrink_to_fit();
+
 	cout << "Adjacency lists created.\n";
-	
 	
 	
 	// get image clusters (graph components) and unique images
 	//******************************************************************
 	
 	vector< set< unsigned long > > image_clusters;
-	set<unsigned long> unique_images;
 	
 	for( auto& i : image_similarities ){
 		
 		if( i.second.empty() ){ // no similarities
-			unique_images.emplace( i.first );
+			std::cout << "ok1\n";
 			continue;
 		}
 		
@@ -378,18 +379,10 @@ int main( int argc, char* argv[] ){
 		
 		cout << "image cluster " << i << ":\n";
 		for( auto& j : image_clusters[i] ){
-			cout << file_list[j] << "\n";
+			cout << file_list.at(j) << "\n";
 		}
 		
 	}
-	
-	// print unique images
-	if( show_unique ){
-		
-		cout << "unique images:\n";
-		for( auto& i : unique_images ){
-			cout << file_list[i] << "\n";
-		}
-		
-	}
+
+	return 0;
 }
