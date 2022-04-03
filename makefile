@@ -1,4 +1,4 @@
-CC=g++
+CC=c++
 
 build: img-similarity-cluster img-search
 
