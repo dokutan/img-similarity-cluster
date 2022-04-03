@@ -56,7 +56,8 @@
 	printf("-h\tshow this message\n"); \
 	printf("-d=arg\tdirectory of images (- for stdin)\n"); \
 	printf("-r\tload images recursively\n"); \
-	printf("-t=arg\tthreshold for similarity\n");
+	printf("-t=arg\tthreshold for similarity\n"); \
+	printf("-l\tprint all similar images on one line and nothing else\n");
 
 
 // Mutex for the calculate_hash_values function
@@ -185,10 +186,10 @@ int main( int argc, char* argv[] ){
 	//******************************************************************
 	
 	int c;
-	bool be_recursive = false;
+	bool be_recursive = false, one_line = false;
 	bool flag_directory = false, flag_threshold = false;
 	string string_threshold, string_directory;
-	while( ( c = getopt( argc, argv, "hrd:t:") ) != -1 ){
+	while( ( c = getopt( argc, argv, "hrd:t:l") ) != -1 ){
 		
 		switch(c){
 			case 'h':
@@ -205,6 +206,9 @@ int main( int argc, char* argv[] ){
 			case 't':
 				flag_threshold = 1;
 				string_threshold = optarg;
+				break;
+			case 'l':
+				one_line = true;
 				break;
 			default:
 				break;
@@ -290,7 +294,8 @@ int main( int argc, char* argv[] ){
 		}
 	}
 	
-	cout << "Filelist created, " << file_list.size() << " files.\n";
+	if(!one_line)
+		cout << "Filelist created, " << file_list.size() << " files.\n";
 	
 	
 	
@@ -307,7 +312,8 @@ int main( int argc, char* argv[] ){
 		t.at(i).join();
 	}
 
-	cout << "Finished hash calculations.\n";
+	if(!one_line)
+		cout << "Finished hash calculations.\n";
 	
 	
 	// create map of images to their similar images
@@ -326,7 +332,8 @@ int main( int argc, char* argv[] ){
 	hash_list.clear();
 	hash_list.shrink_to_fit();
 
-	cout << "Adjacency lists created.\n";
+	if(!one_line)
+		cout << "Adjacency lists created.\n";
 	
 	
 	// get image clusters (graph components) and unique images
@@ -377,10 +384,15 @@ int main( int argc, char* argv[] ){
 	// print image clusters
 	for( unsigned int i = 0; i < image_clusters.size(); i++ ){
 		
-		cout << "image cluster " << i << ":\n";
+		if(!one_line)
+			cout << "image cluster " << i << ":\n";
+
 		for( auto& j : image_clusters[i] ){
-			cout << file_list.at(j) << "\n";
+			cout << file_list.at(j) << (one_line ? " " : "\n");
 		}
+
+		if(one_line)
+			cout << "\n";
 		
 	}
 
