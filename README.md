@@ -20,6 +20,12 @@ img-search -h
 img-similarity-cluster -d /path/to/directory
 ```
 
+- Show similar images in a GUI:
+```
+img-similarity-cluster -l -d /path/to/directory | view-similar
+```
+Use the left, right and down arrows to change the image, space prints the current image.
+
 ## Comparison with similar tools
 
 6600 images (3.1 GB) on tmpfs:

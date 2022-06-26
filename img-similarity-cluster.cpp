@@ -388,7 +388,7 @@ int main( int argc, char* argv[] ){
 			cout << "image cluster " << i << ":\n";
 
 		for( auto& j : image_clusters[i] ){
-			cout << file_list.at(j) << (one_line ? " " : "\n");
+			cout << file_list.at(j) << (one_line ? "\t" : "\n");
 		}
 
 		if(one_line)
